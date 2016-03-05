@@ -187,6 +187,9 @@ class FullyConnectedNet(object):
         str_i = str(i + 1)
         self.params['W' + str_i] = weight_scale * np.random.randn(w_dims[i], w_dims[i+1])
         self.params['b' + str_i] = np.zeros(w_dims[i+1], dtype=self.dtype)
+        if self.use_batchnorm and i < self.num_layers - 1:
+          self.params['gamma' + str_i] = np.ones(w_dims[i+1], dtype=self.dtype)
+          self.params['beta' + str_i] = np.zeros(w_dims[i+1], dtype=self.dtype)
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
@@ -248,11 +251,21 @@ class FullyConnectedNet(object):
     caches = []
     inp = X
     str_idx = lambda i: str(i + 1)
-    # forward L - 1 affine_relu_layer
+    # forward L - 1 affine_(batch)_relu_layer
     for i in range(self.num_layers - 1):
       W = self.params['W' + str_idx(i)]
       b = self.params['b' + str_idx(i)]
-      out, cache = affine_relu_forward(inp, W, b)
+      if self.use_batchnorm:
+        gamma = self.params['gamma' + str_idx(i)]
+        beta = self.params['beta' + str_idx(i)]
+        bn_param = self.bn_params[i]
+        out, cache = affine_batch_relu_forward(inp, W, b, gamma, beta, bn_param)
+      else:
+        out, cache = affine_relu_forward(inp, W, b)
+      
+      if self.use_dropout:
+        pass
+      
       inp = out
       outs.append(out)
       caches.append(cache)
@@ -287,17 +300,25 @@ class FullyConnectedNet(object):
     W_keys = [k for k in self.params if 'W' in k]
     Ws = [self.params[k] for k in W_keys]
     loss += 0.5 * self.reg * np.sum([np.sum(W * W) for W in Ws])
-    douts = [None] * len(outs)
+    # douts = [None] * len(outs)
     assert len(outs) == last_layer
-    douts[last_layer - 1], grads['W' + str_idx(last_layer)], grads['b' + str_idx(last_layer)] = \
+    dout, grads['W' + str_idx(last_layer)], grads['b' + str_idx(last_layer)] = \
       affine_backward(dscores, cache_final)
     for i in reversed(range(self.num_layers - 1)):
-      dout, grads['W' + str_idx(i)], grads['b' + str_idx(i)] = \
-        affine_relu_backward(douts[i], caches[i])
+      if self.use_dropout:
+        # todo
+        pass
+      if self.use_batchnorm:
+        dout, dw, db, dgamma, dbeta= \
+          affine_batch_relu_backward(dout, caches[i])
+        grads['gamma' + str_idx(i)] = dgamma
+        grads['beta' + str_idx(i)] = dbeta
+      else :
+        dout, dw, db = affine_relu_backward(dout, caches[i])
+      grads['W' + str_idx(i)] = dw
+      grads['b' + str_idx(i)] = db
       if i == 0:
         dX = dout
-      else:
-        douts[i - 1] = dout
     for k in W_keys:
       grads[k] += self.reg * self.params[k]    
     ############################################################################

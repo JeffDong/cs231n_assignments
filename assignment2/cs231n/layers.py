@@ -154,7 +154,7 @@ def batchnorm_forward(x, gamma, beta, bn_param):
   running_mean = bn_param.get('running_mean', np.zeros(D, dtype=x.dtype))
   running_var = bn_param.get('running_var', np.zeros(D, dtype=x.dtype))
 
-  out, cache = None, None
+  out, cache = None, {}
   if mode == 'train':
     #############################################################################
     # TODO: Implement the training-time forward pass for batch normalization.   #
@@ -169,7 +169,18 @@ def batchnorm_forward(x, gamma, beta, bn_param):
     # the momentum variable to update the running mean and running variance,    #
     # storing your result in the running_mean and running_var variables.        #
     #############################################################################
-    pass
+    sample_mean = x.mean(axis=0)
+    sample_var = x.var(axis=0)
+    running_mean = momentum * running_mean + (1 - momentum) * sample_mean
+    running_var = momentum * running_var + (1 - momentum) * sample_var
+    x_hat = (x - sample_mean) / np.sqrt(sample_var + eps)
+    out = gamma * x_hat + beta
+    cache['x'] = x
+    cache['x_hat'] = x_hat
+    cache['gamma'] = gamma
+    cache['sample_mean'] = sample_mean
+    cache['sample_var'] = sample_var
+    cache['eps'] = eps
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -180,7 +191,8 @@ def batchnorm_forward(x, gamma, beta, bn_param):
     # and shift the normalized data using gamma and beta. Store the result in   #
     # the out variable.                                                         #
     #############################################################################
-    pass
+    out = (x - running_mean) / np.sqrt(running_var + eps)
+    out = gamma * out + beta
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -192,7 +204,6 @@ def batchnorm_forward(x, gamma, beta, bn_param):
   bn_param['running_var'] = running_var
 
   return out, cache
-
 
 def batchnorm_backward(dout, cache):
   """
@@ -216,13 +227,117 @@ def batchnorm_backward(dout, cache):
   # TODO: Implement the backward pass for batch normalization. Store the      #
   # results in the dx, dgamma, and dbeta variables.                           #
   #############################################################################
-  pass
+  x_hat = cache['x_hat']
+  gamma = cache['gamma']
+  varx = cache['sample_var']
+  ex = cache['sample_mean']
+  x = cache['x']
+  eps = cache['eps']
+  N, D = x.shape
+  dx_hat = dout * gamma
+  dvarx = ((dx_hat * (x - ex)).sum(axis=0)) * (-0.5*(varx + eps)**(-3.0/2.0))
+  dex = (dx_hat.sum(axis=0)) * (-1 / np.sqrt(varx + eps))
+  dx = dx_hat / np.sqrt(varx + eps) + dvarx * 2 * (x - ex) / N + dex / N
+  dgamma = (x_hat * dout).sum(axis=0)
+  dbeta = dout.sum(axis=0)
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
 
   return dx, dgamma, dbeta
 
+def batchnorm_backward_2(dout, cache):
+  """
+  Backward pass for batch normalization.
+  
+  For this implementation, you should write out a computation graph for
+  batch normalization on paper and propagate gradients backward through
+  intermediate nodes.
+  
+  Inputs:
+  - dout: Upstream derivatives, of shape (N, D)
+  - cache: Variable of intermediates from batchnorm_forward.
+  
+  Returns a tuple of:
+  - dx: Gradient with respect to inputs x, of shape (N, D)
+  - dgamma: Gradient with respect to scale parameter gamma, of shape (D,)
+  - dbeta: Gradient with respect to shift parameter beta, of shape (D,)
+  """
+  dx, dgamma, dbeta = None, None, None
+  #############################################################################
+  # TODO: Implement the backward pass for batch normalization. Store the      #
+  # results in the dx, dgamma, and dbeta variables.                           #
+  #############################################################################
+  x_hat = cache['x_hat']
+  gamma = cache['gamma']
+  varx = cache['sample_var']
+  ex = cache['sample_mean']
+  x = cache['x']
+  N, D = x.shape
+  dx = ((float(N - 1) / float(N)) * np.sqrt(varx) - (x - ex)**2 * (1 / float(N)) * (1 / np.sqrt(varx))) / varx
+  dx = dx * gamma * dout
+  dgamma = (x_hat * dout).sum(axis=0)
+  dbeta = dout.sum(axis=0)
+  #############################################################################
+  #                             END OF YOUR CODE                              #
+  #############################################################################
+
+  return dx, dgamma, dbeta
+
+def batchnorm_backward_3(dout, cache):
+  """
+  Backward pass for batch normalization.
+  
+  For this implementation, you should write out a computation graph for
+  batch normalization on paper and propagate gradients backward through
+  intermediate nodes.
+  
+  Inputs:
+  - dout: Upstream derivatives, of shape (N, D)
+  - cache: Variable of intermediates from batchnorm_forward.
+  
+  Returns a tuple of:
+  - dx: Gradient with respect to inputs x, of shape (N, D)
+  - dgamma: Gradient with respect to scale parameter gamma, of shape (D,)
+  - dbeta: Gradient with respect to shift parameter beta, of shape (D,)
+  """
+  dx, dgamma, dbeta = None, None, None
+  #############################################################################
+  # TODO: Implement the backward pass for batch normalization. Store the      #
+  # results in the dx, dgamma, and dbeta variables.                           #
+  #############################################################################
+  x_hat = cache['x_hat']
+  gamma = cache['gamma']
+  varx = cache['sample_var']
+  ex = cache['sample_mean']
+  x = cache['x']
+  eps = cache['eps']
+  N, D = x.shape
+  
+  x1 = ex
+  x2 = varx
+  x3 = x - ex
+  x4 = 1 / np.sqrt(x2)
+  x5 = x3 * x4
+  dx5 = gamma * dout
+  assert dx5.shape == (N, D)
+  dx4 = (x3 * dx5).sum(axis=0)
+  assert dx4.shape[0] == D
+  dx3 = x4 * dx5
+  assert dx3.shape == (N, D)
+  dx2 = - 0.5 * (x2 + eps)**(-3.0/2.0) * dx4
+  assert dx2.shape[0] == D
+  dx1 = (-dx3).sum(axis=0)
+  dx = dx3
+  dx += dx1 / N
+  dx += 2 * (x - ex) * dx2 / N
+  dgamma = (x_hat * dout).sum(axis=0)
+  dbeta = dout.sum(axis=0)
+  #############################################################################
+  #                             END OF YOUR CODE                              #
+  #############################################################################
+
+  return dx, dgamma, dbeta
 
 def batchnorm_backward_alt(dout, cache):
   """
@@ -246,7 +361,33 @@ def batchnorm_backward_alt(dout, cache):
   # should be able to compute gradients with respect to the inputs in a       #
   # single statement; our implementation fits on a single 80-character line.  #
   #############################################################################
-  pass
+  x_hat = cache['x_hat']
+  gamma = cache['gamma']
+  varx = cache['sample_var']
+  ex = cache['sample_mean']
+  x = cache['x']
+  eps = cache['eps']
+  N, D = x.shape
+  
+  x1 = ex
+  x2 = varx
+  x3 = x - ex
+  x4 = 1 / np.sqrt(x2)
+  x5 = x3 * x4
+  dx5 = gamma * dout
+  assert dx5.shape == (N, D)
+  dx4 = (x3 * dx5).sum(axis=0)
+  assert dx4.shape[0] == D
+  dx3 = x4 * dx5
+  assert dx3.shape == (N, D)
+  dx2 = - 0.5 * (x2 + eps)**(-3.0/2.0) * dx4
+  assert dx2.shape[0] == D
+  dx1 = (-dx3).sum(axis=0)
+  dx = dx3
+  dx += dx1 / N
+  dx += 2 * (x - ex) * dx2 / N
+  dgamma = (x_hat * dout).sum(axis=0)
+  dbeta = dout.sum(axis=0)
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
