@@ -264,8 +264,9 @@ class FullyConnectedNet(object):
         out, cache = affine_relu_forward(inp, W, b)
       
       if self.use_dropout:
-        pass
-      
+        out, cache_dropout = dropout_forward(out, self.dropout_param)
+        cache = (cache, cache_dropout)
+
       inp = out
       outs.append(out)
       caches.append(cache)
@@ -306,15 +307,17 @@ class FullyConnectedNet(object):
       affine_backward(dscores, cache_final)
     for i in reversed(range(self.num_layers - 1)):
       if self.use_dropout:
-        # todo
-        pass
+        cache, cache_dropout = caches[i]
+        dout = dropout_backward(dout, cache_dropout)
+      else:
+        cache = caches[i]
       if self.use_batchnorm:
         dout, dw, db, dgamma, dbeta= \
-          affine_batch_relu_backward(dout, caches[i])
+          affine_batch_relu_backward(dout, cache)
         grads['gamma' + str_idx(i)] = dgamma
         grads['beta' + str_idx(i)] = dbeta
       else :
-        dout, dw, db = affine_relu_backward(dout, caches[i])
+        dout, dw, db = affine_relu_backward(dout, cache)
       grads['W' + str_idx(i)] = dw
       grads['b' + str_idx(i)] = db
       if i == 0:
