@@ -71,6 +71,31 @@ def conv_relu_backward(dout, cache):
   dx, dw, db = conv_backward_fast(da, conv_cache)
   return dx, dw, db
 
+def conv_batch_relu_forward(x, w, b, conv_param, gamma, beta, bn_param):
+  out1, conv_cache = conv_forward_fast(x, w, b, conv_param)
+  out2, batchnorm_cache = spatial_batchnorm_forward(out1, gamma, beta, bn_param)
+  out3, relu_cache = relu_forward(out2)
+  cache = (conv_cache, batchnorm_cache, relu_cache)
+  return out3, cache
+
+def conv_batch_relu_backward(dout, cache):
+  conv_cache, batchnorm_cache, relu_cache = cache
+  drelu = relu_backward(dout, relu_cache)
+  dbatchnorm, dgamma, dbeta = spatial_batchnorm_backward(drelu, batchnorm_cache)
+  dx, dw, db = conv_backward_fast(dbatchnorm, conv_cache)
+  return dx, dw, db, dgamma, dbeta
+
+def conv_batch_relu_pool_forward(x, w, b, conv_param, gamma, beta, bn_param, pool_param):
+  out1, cache_cbr = conv_batch_relu_forward(x, w, b, conv_param, gamma, beta, bn_param)
+  out2, cache_pool = max_pool_forward_fast(out1, pool_param)
+  cache = (cache_cbr, cache_pool)
+  return out2, cache
+
+def conv_batch_relu_pool_backward(dout, cache):
+  cache_cbr, cache_pool = cache
+  dcbr = max_pool_backward_fast(dout, cache_pool)
+  dx, dw, db, dgamma, dbeta = conv_batch_relu_backward(dcbr, cache_cbr)
+  return dx, dw, db, dgamma, dbeta
 
 def conv_relu_pool_forward(x, w, b, conv_param, pool_param):
   """
